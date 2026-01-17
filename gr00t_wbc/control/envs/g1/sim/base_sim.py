@@ -138,6 +138,12 @@ class DefaultEnv:
         self.body_joint_index = []
         self.left_hand_index = []
         self.right_hand_index = []
+
+        self.ghost_body_joint_index = []
+        self.ghost_left_hand_index = []
+        self.ghost_right_hand_index = []
+        self.ghost_base_start_index = 0
+
         for i in range(self.mj_model.njnt):
             name = self.mj_model.joint(i).name
             if any(
@@ -146,19 +152,46 @@ class DefaultEnv:
                     for part_name in ["hip", "knee", "ankle", "waist", "shoulder", "elbow", "wrist"]
                 ]
             ):
-                self.body_joint_index.append(i)
+                if "ghost" in name:
+                    self.ghost_body_joint_index.append(i)
+                    print("Found ghost body joint:", name, " - Index:", i)
+                else:
+                    self.body_joint_index.append(i)
+                    print("Found body joint:", name, " - Index:", i)
             elif "left_hand" in name:
-                self.left_hand_index.append(i)
+                if "ghost" in name:
+                    self.ghost_left_hand_index.append(i)
+                    print("Found ghost left hand joint:", name, " - Index:", i)
+                else:
+                    self.left_hand_index.append(i)
+                    print("Found left hand joint:", name, " - Index:", i)
             elif "right_hand" in name:
-                self.right_hand_index.append(i)
+                if "ghost" in name:
+                    self.ghost_right_hand_index.append(i)
+                    print("Found ghost right hand joint:", name, " - Index:", i)     
+                else:
+                    self.right_hand_index.append(i)
+                    print("Found right hand joint:", name, " - Index:", i)
+            elif "base" in name:
+                if "ghost" in name:
+                    self.ghost_base_start_index = i
+                    print("Found ghost base joint:", name, " - Index:", i)
 
         assert len(self.body_joint_index) == self.config["NUM_JOINTS"]
         assert len(self.left_hand_index) == self.config["NUM_HAND_JOINTS"]
         assert len(self.right_hand_index) == self.config["NUM_HAND_JOINTS"]
 
+        assert len(self.ghost_body_joint_index) == self.config["NUM_JOINTS"]
+        assert len(self.ghost_left_hand_index) == self.config["NUM_HAND_JOINTS"]
+        assert len(self.ghost_right_hand_index) == self.config["NUM_HAND_JOINTS"]
+
         self.body_joint_index = np.array(self.body_joint_index)
         self.left_hand_index = np.array(self.left_hand_index)
         self.right_hand_index = np.array(self.right_hand_index)
+        
+        self.ghost_body_joint_index = np.array(self.ghost_body_joint_index)
+        self.ghost_left_hand_index = np.array(self.ghost_left_hand_index)
+        self.ghost_right_hand_index = np.array(self.ghost_right_hand_index)
 
     def init_renderers(self):
         # Initialize camera renderers
@@ -323,8 +356,63 @@ class DefaultEnv:
             self.mj_data.ctrl = np.concatenate((np.zeros(6), self.torques))
         else:
             self.mj_data.ctrl = self.torques
+
+        # # Set ghost robot base pose (position + orientation quaternion)
+        # ghost_base_pose = np.array([
+        #     1.93594642e-03, 5.46013017e-06, 9.10205862e-01, 9.99847576e-01,
+        #     5.36355415e-05, 1.74590462e-02, 5.85714837e-05
+        # ])
+        # self.mj_data.qpos[self.ghost_base_start_index + 7 - 1 : self.ghost_base_start_index - 1 + 14] = ghost_base_pose
+
+        # # Set ghost robot body joint positions
+        # ghost_body_joints = np.array([
+        #     8.24294550e-03, -6.82665364e-04, -8.84495422e-04,  1.79547033e-02, 6.04158458e-02,  1.31619661e-05, 8.30207853e-03,  4.46629655e-04, 8.81014305e-04,  1.76936962e-02,  6.04035925e-02, -1.31933844e-05,
+        #     -1.17593682e-04, -3.93304640e-05, -2.69961499e-02,  2.75853209e-02, 1.63639824e-01, -9.40659802e-03,  2.47583342e-01,  1.05757785e-03, 3.65061576e-02,  2.59403003e-03,  2.75861448e-02, -1.63696341e-01,
+        #     9.46018411e-03,  2.47596374e-01, -1.09946156e-03,  3.68558657e-02, -2.92697920e-03
+        # ])
+        # self.mj_data.qpos[self.ghost_body_joint_index + 7 - 1] = ghost_body_joints
+
+        # self.mj_data.qpos[self.ghost_base_start_index + 7 - 1] = 0.0
+        # self.mj_data.qpos[self.ghost_base_start_index + 7 - 1 + 1] = 0.0
+        # self.mj_data.qpos[self.ghost_base_start_index + 7 - 1 + 2] = 1.0
+        self.mj_data.qpos[self.ghost_base_start_index + 7 - 1 : self.ghost_base_start_index - 1 + 14] = self.mj_data.qpos[:7]
+
+        self.mj_data.qpos[self.ghost_body_joint_index + 14 - 1] = self.mj_data.qpos[self.body_joint_index + 7 - 1]
+
+        # Copy hand joints if needed
+        # self.mj_data.qpos[self.ghost_left_hand_index + 14 - 1] = self.mj_data.qpos[self.left_hand_index + 7 - 1]
+        # self.mj_data.qpos[self.ghost_right_hand_index + 14 - 1] = self.mj_data.qpos[self.right_hand_index + 7 - 1]
+
+        # Shoulder pitch joint
+        self.mj_data.qpos[self.ghost_base_start_index - 1 + 15 + 15] = self.mj_data.qpos[7 + 15] + (np.pi/2)
+        self.mj_data.qpos[self.ghost_base_start_index - 1 + 15 + 22] = self.mj_data.qpos[7 + 22] + (np.pi/2)
+
         mujoco.mj_step(self.mj_model, self.mj_data)
         # self.check_self_collision()
+
+        # Print floating base pose (position + orientation quaternion)
+        print("Base pose (qpos[:7]):", self.mj_data.qpos[:7])
+
+        # Print body joint positions
+        print("Body joints (qpos):", self.mj_data.qpos[self.body_joint_index + 7 - 1])
+
+        # # # Print left hand joint positions
+        # # print("Left hand joints (qpos):", self.mj_data.qpos[self.left_hand_index + 7 - 1])
+
+        # # # Print right hand joint positions
+        # # print("Right hand joints (qpos):", self.mj_data.qpos[self.right_hand_index + 7 - 1])
+
+        # Print ghost floating base pose (position + orientation quaternion)
+        print("Ghost Base pose (qpos - 7 vals):", self.mj_data.qpos[self.ghost_base_start_index + 7 - 1 : self.ghost_base_start_index + 13 - 1])
+
+        # Print ghost body joint positions
+        print("Ghost Body joints (qpos):", self.mj_data.qpos[self.ghost_body_joint_index + 14 - 1])
+
+        # # Print ghost left hand joint positions
+        # print("Ghost Left hand joints (qpos):", self.mj_data.qpos[self.ghost_left_hand_index + 7 - 1])
+
+        # # Print ghost right hand joint positions
+        # print("Ghost Right hand joints (qpos):", self.mj_data.qpos[self.ghost_right_hand_index + 7 - 1])
 
     def kinematics_step(self):
         """
