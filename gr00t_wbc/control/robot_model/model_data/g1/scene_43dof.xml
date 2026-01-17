@@ -1,5 +1,6 @@
 <mujoco model="g1_43dof scene">
-  <include file="g1_29dof_with_hand.xml"/>
+  <!-- <include file="g1_29dof_with_hand.xml"/> -->
+  <include file="g1_29dof_with_hand_dual.xml"/>
   <!-- Note that the hand model in g1_29dof_with_hand.xml is not stable for simulation. -->
 
   <statistic center="0 0 0.5" extent="2.0"/>
